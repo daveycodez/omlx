@@ -13,7 +13,10 @@ def _native_qmm(linear: nn.QuantizedLinear, x: mx.array):
         return None
     if getattr(linear, "mode", None) != "affine" or "bias" in linear:
         return None
-    min_tokens = 1024 if bits == 8 else 128
+    # The q8 affine qmm tile produces incorrect output for glm5_next
+    # projection shapes; route 8-bit through stock quantized_matmul until
+    # the kernel supports them. 4/5/6-bit tiles verified correct on GLM.
+    min_tokens = 10**9 if bits == 8 else 128
     if x.ndim < 2 or x.shape[-2] < min_tokens:
         return None
 
@@ -69,7 +72,10 @@ def fused_quantized_matmul(
     group_size: int,
 ) -> mx.array:
     """Route a concatenated projection through the same native affine tile."""
-    min_tokens = 1024 if bits == 8 else 128
+    # The q8 affine qmm tile produces incorrect output for glm5_next
+    # projection shapes; route 8-bit through stock quantized_matmul until
+    # the kernel supports them. 4/5/6-bit tiles verified correct on GLM.
+    min_tokens = 10**9 if bits == 8 else 128
     if (
         x.ndim >= 2
         and x.shape[-2] >= min_tokens
