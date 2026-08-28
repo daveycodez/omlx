@@ -475,6 +475,15 @@ class BatchQSAKVCache:
     def trim(self, n):
         trimmed = self.kv_cache.trim(n)
         self.index_offset = max(0, self.index_offset - trimmed)
+        # Slice the physical arrays like the singleton trim does:
+        # update_indexer concatenates onto them and re-derives index_offset
+        # from shape[1], so stale draft columns would otherwise fossilize
+        # and desync the indexer from the KV by the trimmed amount.
+        if trimmed and self.index_keys is not None:
+            self.index_keys = self.index_keys[:, : self.index_offset]
+            self.index_position_ids = self.index_position_ids[
+                ..., : self.index_offset
+            ]
         return trimmed
 
     @property
