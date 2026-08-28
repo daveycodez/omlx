@@ -925,6 +925,17 @@ class LanguageModel(nn.Module):
             out = self.model.embed_tokens.as_linear(out)
         else:
             out = linear_forward(self.lm_head, out)
+        # <|assistant|> (154828) is a prompt-structure token the template never
+        # expects in output; quantized checkpoints occasionally sample it at
+        # action boundaries (instead of <tool_call> or a stop), derailing into
+        # self-dialogue or truncating tool calls. Suppress it outright.
+        if out.shape[-1] > 154828:
+            neg = mx.full((1,), -mx.inf, dtype=out.dtype)
+            out = mx.concatenate(
+                [out[..., :154828], mx.broadcast_to(neg, out.shape[:-1] + (1,)),
+                 out[..., 154829:]],
+                axis=-1,
+            )
         return LanguageModelOutput(logits=out)
 
     def sanitize(self, weights):
