@@ -266,10 +266,13 @@ def _patch_vlm_language_model(q35moe_lang: Any) -> None:
 
         # Passing any non-None ``capture_layer_ids`` makes stock
         # ``LanguageModel.__call__`` allocate ``hidden_sink`` AND ``gdn_sink``,
-        # both of which we need.  Pop any existing value from kwargs to avoid
-        # "got multiple values for keyword argument" when the caller already
-        # passed capture_layer_ids (e.g. speculative_verify_logits).
-        kwargs.pop("capture_layer_ids", None)
+        # both of which we need.  Pop the value from kwargs to avoid
+        # "got multiple values for keyword argument", but preserve an
+        # explicitly-passed list (e.g. speculative_verify_logits, or a
+        # subclass passing the ``[]`` sentinel to request full pre-mixer
+        # hyper-connection streams); only default to the last layer when the
+        # caller passed nothing.
+        explicit_capture = kwargs.pop("capture_layer_ids", None)
         last_layer_idx = len(self.model.layers) - 1
         out = original_call(
             self,
@@ -277,7 +280,9 @@ def _patch_vlm_language_model(q35moe_lang: Any) -> None:
             inputs_embeds,
             mask,
             cache,
-            capture_layer_ids=[last_layer_idx],
+            capture_layer_ids=(
+                [last_layer_idx] if explicit_capture is None else explicit_capture
+            ),
             **kwargs,
         )
         from mlx_vlm.models.base import LanguageModelOutput

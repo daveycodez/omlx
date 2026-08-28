@@ -322,10 +322,13 @@ def _patch_vlm_language_model(q35_lang: Any) -> None:
 
         # Passing any non-None ``capture_layer_ids`` makes stock
         # ``LanguageModel.__call__`` allocate ``hidden_sink`` AND ``gdn_sink``,
-        # both of which the MTP cycle needs. Pop any existing value from kwargs
-        # to avoid "got multiple values for keyword argument" when the caller
-        # already passed capture_layer_ids.
-        kwargs.pop("capture_layer_ids", None)
+        # both of which the MTP cycle needs. Pop the value from kwargs to
+        # avoid "got multiple values for keyword argument", but preserve an
+        # explicitly-passed list: the qwen4_exp subclass passes the ``[]``
+        # sentinel through ``super().__call__`` to request the full pre-mixer
+        # hyper-connection streams for its Lightning MTP head, and clobbering
+        # it would hand the head the mixed (hc-narrow) hidden instead.
+        explicit_capture = kwargs.pop("capture_layer_ids", None)
         last_layer_idx = len(self.model.layers) - 1
         out = original_call(
             self,
@@ -333,7 +336,9 @@ def _patch_vlm_language_model(q35_lang: Any) -> None:
             inputs_embeds,
             mask,
             cache,
-            capture_layer_ids=[last_layer_idx],
+            capture_layer_ids=(
+                [last_layer_idx] if explicit_capture is None else explicit_capture
+            ),
             **kwargs,
         )
         from mlx_vlm.models.base import LanguageModelOutput
