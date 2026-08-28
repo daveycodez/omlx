@@ -711,6 +711,11 @@ class Qwen4ExpQSAIndexer(nn.Module):
             full_position_ids = position_ids
 
         key_len = raw_keys.shape[1]
+        if isinstance(past_len, mx.array):
+            # Batched rows carry per-row KV offsets, but the indexer cache is
+            # left-padded to one width; the masks below need aligned-column
+            # scalars or the (batch,) offsets broadcast into the seq axis.
+            past_len = key_len - seq_len
         max_complete_blocks = key_len // self.compress_ratio
         if max_complete_blocks <= self.block_topk:
             return None
